@@ -1,0 +1,9 @@
+{
+  "name": "FarmCounter",
+  "version_number": "0.0.1",
+  "website_url": "https://github.com/joeyparrish/valheim-farmcounter",
+  "description": "FarmCounter lets you add special tags to a sign that will be replaced with counts of nearby creatures.",
+  "dependencies": [
+    "denikson-BepInExPack_Valheim-5.4.1901"
+  ]
+}

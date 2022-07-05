@@ -88,7 +88,7 @@
   <Target Name="GenerateVersionFile">
     <PropertyGroup>
       <ReleaseVersionCode>
-namespace Pokeheim {
+namespace FarmCounter {
   public static class ModVersion {
     public const string String = "$(RELEASE_VERSION)"%3B
   }

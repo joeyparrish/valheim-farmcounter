@@ -1,0 +1,92 @@
+name: Build, package, release
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Get Valheim version id
+        id: valheimversion
+        run: echo "::set-output name=valheimversion::$(curl -s https://api.steamcmd.net/v1/info/896660 | jq -r ".data.\"896660\".depots.branches.public.buildid")"
+
+      - name: Get build commands
+        run: scripts/install-linux-tools.sh
+
+      - name: Install NuGet dependencies
+        run: |
+          # Fixes weird permission errors that started in GitHub Actions
+          # environments on June 14th:
+          sudo chown -R $USER /tmp/NuGetScratch/
+
+          nuget restore FarmCounter.sln
+
+      - name: Cache Valheim
+        id: cachevalheim
+        uses: actions/cache@v2
+        with:
+          path: ~/VHINSTALL
+          key: ${{ steps.valheimversion.outputs.valheimversion }}-${{ hashFiles('**/lockfiles') }}-BepInExPack-5.4.1900
+
+      - name: Install SteamCMD
+        if: steps.cachevalheim.outputs.cache-hit != 'true'
+        uses: CyberAndrii/setup-steamcmd@v1
+
+      - name: Prepare FarmCounter dependencies
+        if: steps.cachevalheim.outputs.cache-hit != 'true'
+        run: |
+          wget -O bepinex.zip "https://valheim.thunderstore.io/package/download/denikson/BepInExPack_Valheim/5.4.1900/"
+          unzip bepinex.zip -d ~/BepInExRaw
+          steamcmd +login anonymous +force_install_dir ~/VHINSTALL +app_update 896660 validate +exit
+          mv ~/VHINSTALL/valheim_server_Data/ ~/VHINSTALL/valheim_Data/
+          mv ~/BepInExRaw/BepInExPack_Valheim/* ~/VHINSTALL/
+
+      - name: Remove old DLLs
+        run: |
+          rm -rf ~/VHINSTALL/valheim_server_Data/Managed/publicized_assemblies
+          rm -rf ~/VHINSTALL/BepInEx/plugins/MMHOOK
+
+      - name: Set references to DLLs
+        run: |
+          echo "<?xml version=\"1.0\" encoding=\"utf-8\"?><Project ToolsVersion=\"Current\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\"><PropertyGroup><VALHEIM_INSTALL>$HOME/VHINSTALL/</VALHEIM_INSTALL></PropertyGroup></Project>" > Environment.props
+
+      - name: Build debug version
+        run: ./scripts/build.sh Debug
+
+      # Set the version to the tag, if this was a tag push.
+      - name: Prepare release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          RELEASE_VERSION=$(echo "${{ github.ref }}" | sed -e 's@refs/tags/@@')
+          echo "RELEASE_VERSION=$RELEASE_VERSION" >> $GITHUB_ENV
+          echo "Setting release version to $RELEASE_VERSION"
+
+      # Set a dummy default version for CI builds generated on every push or on
+      # pull requests.
+      - name: Build release zip
+        run: |
+          RELEASE_VERSION="${RELEASE_VERSION:-0.0.1}" ./scripts/package.sh
+
+      - uses: actions/upload-artifact@v2
+        with:
+          # Will result in FarmCounter.zip
+          name: FarmCounter
+          # Everything in this folder will be archived, but not the folder
+          path: staging/
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: FarmCounter.zip
