@@ -68,7 +68,7 @@ will detect the overridden distance from the other mod and use that instead.
 
 ## Dependencies
 
-Just [BepInEx](https://valheim.thunderstore.io/package/denikson/BepInExPack_Valheim/)
+Just [BepInEx](https://valheim.thunderstore.io/package/denikson/BepInExPack_Valheim/).
 
 
 ## Incompatibilities
@@ -79,6 +79,12 @@ None that we know of!
 ## Multiplayer
 
 If someone is not using the mod, they will simply see the raw tag on the sign.
+
+
+## Links
+
+ - Nexus Mods: https://www.nexusmods.com/valheim/mods/1952/
+ - Thunderstore: https://valheim.thunderstore.io/package/joeyparrish/FarmCounter/
 
 
 ## Credits
