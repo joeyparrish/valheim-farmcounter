@@ -2,7 +2,7 @@
 
 Source: https://github.com/joeyparrish/valheim-farmcounter
 
-[FarmCounter Preview Video
+[FarmCounter Preview Video<br>
 ![FarmCounter Preview Video](https://img.youtube.com/vi/DPXoDrkEHrg/hq2.jpg)](
 https://youtu.be/DPXoDrkEHrg "FarmCounter Preview Video")
 
@@ -66,17 +66,17 @@ such as [Valheim Plus](https://github.com/valheimPlus/ValheimPlus), FarmCounter
 will detect the overridden distance from the other mod and use that instead.
 
 
-### Dependencies
+## Dependencies
 
 Just [BepInEx](https://valheim.thunderstore.io/package/denikson/BepInExPack_Valheim/)
 
 
-### Incompatibilities
+## Incompatibilities
 
 None that we know of!
 
 
-### Multiplayer
+## Multiplayer
 
 If someone is not using the mod, they will simply see the raw tag on the sign.
 
