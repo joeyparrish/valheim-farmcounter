@@ -46,7 +46,11 @@ namespace FarmCounter {
 
     private static readonly Harmony harmony = new Harmony(PluginName);
 
+    private static new BepInEx.Logging.ManualLogSource Logger;
+
     private void Awake() {
+      Logger = BepInEx.Logging.Logger.CreateLogSource("FarmCounter");
+
       try {
         harmony.PatchAll();
       } catch (Exception ex) {
@@ -54,108 +58,218 @@ namespace FarmCounter {
       }
     }
 
-    private const string workbenchName = "$piece_workbench";
-    private static float workbenchRange = 20f;  // standard workbench range
+    public class FarmCounterBehaviour : MonoBehaviour {
+      private const string workbenchName = "$piece_workbench";
+      private static float workbenchRange = 20f;  // standard workbench range
 
-    // If there's a mod installed that modifies the workbench range, sniff out
-    // the range at runtime.  This is compatible with Valheim Plus.
-    [HarmonyPatch(typeof(CraftingStation), nameof(CraftingStation.Start))]
-    class SniffWorkbenchRange_Patch {
-      static void Postfix(CraftingStation __instance) {
-        if (__instance.m_name == workbenchName) {
-          workbenchRange = __instance.m_rangeBuild;
+      private static List<FarmCounterBehaviour> instances =
+          new List<FarmCounterBehaviour>();
+
+      private Sign sign;
+      // Sorted by length, descending.
+      private List<string> identifiers = new List<string>();
+      private List<CraftingStation> workbenches = new List<CraftingStation>();
+
+      private void Awake() {
+        instances.Add(this);
+
+        sign = GetComponent<Sign>();
+        if (sign != null) {
+          PreparseSignText();
+          FindWorkbenches();
         }
       }
-    }
 
-    // Workbenches in range of a sign define the bounds of the farm.
-    private static List<CraftingStation> FindWorkbenches(Vector3 position) {
-      var workbenches = new List<CraftingStation>();
-      CraftingStation.FindStationsInRange(
-          workbenchName, position, workbenchRange, workbenches);
-      return workbenches;
-    }
+      private void OnDestroy() {
+        instances.Remove(this);
+      }
 
-    // Return true if the character is inside the bounds of the farm.
-    private static bool IsInsideFarm(
-        Character character, List<CraftingStation> workbenches) {
-      foreach (var workbench in workbenches) {
-        var distance = Vector3.Distance(
-            character.transform.position, workbench.transform.position);
-        if (distance < workbenchRange) {
-          return true;
+      private void FindWorkbenches() {
+        // Workbenches in range of a sign define the bounds of the farm.
+        // TODO: Test V+ range changes
+        workbenches.Clear();
+        CraftingStation.FindStationsInRange(
+            workbenchName, transform.position, workbenchRange, workbenches);
+      }
+
+      private static void RecomputeAllWorkbenchesInRange() {
+        foreach (var farmCounter in instances) {
+          farmCounter.FindWorkbenches();
         }
       }
-      return false;
-    }
 
-    private static string ComputeDisplayedSignText(Sign sign) {
-      var signText = sign.GetText();
-      if (!signText.Contains("$wild_") && !signText.Contains("$tame_") &&
-          !signText.Contains("$all_") && !signText.Contains("$workbenches")) {
+      public void PreparseSignText() {
+        var signText = sign.GetText();
+        var identifierSet = new HashSet<string>();
+        Logger.LogDebug($"PreparseSignText: \"{signText}\"");
+
+        bool in_identifier = false;
+        string identifier = "";
+
+        // Iterate to the character past the end, on purpose.  This will allow
+        // us to parse strings that end with an identifier by having a virtual
+        // "character" to end the string and let us run the logic to close an
+        // identifier.
+        for (int index = 0; index <= signText.Length; index++) {
+          var ch = index < signText.Length ? signText[index] : '\0';
+          if (in_identifier == false) {
+            if (ch == '$') {
+              in_identifier = true;
+              identifier = "";
+            }
+          } else {
+            if ((ch >= 'a' && ch <= 'z') ||
+                (ch >= 'A' && ch <= 'Z') ||
+                (ch >= '0' && ch <= '9') ||
+                (ch == '_')) {
+              identifier += ch;
+            } else {
+              Logger.LogDebug($"PreparseSignText: identifier \"{identifier}\"");
+              if (identifier.StartsWith("all_")) {
+                identifierSet.Add(identifier.Replace("all_", ""));
+              } else if (identifier.StartsWith("tame_")) {
+                identifierSet.Add(identifier.Replace("tame_", ""));
+              } else if (identifier.StartsWith("wild_")) {
+                identifierSet.Add(identifier.Replace("wild_", ""));
+              }
+              in_identifier = false;
+            }
+          }
+        }
+
+        // Sort the identifiers, longest first, since some monster names are
+        // substrings of others.  Later, by replacing the longest keys first, we
+        // make sure we do the right thing with $num_boar and $num_boarpiggy.
+        identifiers = new List<string>(identifierSet);
+        identifiers.Sort((x, y) => y.Length.CompareTo(x.Length));
+      }  // public void PreparseSignText
+
+      // Return true if the character is inside the bounds of the farm.
+      private bool IsInsideFarm(Character character) {
+        foreach (var workbench in workbenches) {
+          var distance = Vector3.Distance(
+              character.transform.position, workbench.transform.position);
+          if (distance < workbenchRange) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      // Called by a transpiler patch instead of sign.GetText().
+      public static string ComputeDisplayedText(Sign sign) {
+        var farmCounter = sign.GetComponent<FarmCounterBehaviour>();
+        if (farmCounter != null) {
+          return farmCounter.ComputeDisplayedText();
+        }
+        return sign.GetText();
+      }
+
+      private string ComputeDisplayedText() {
+        var signText = sign.GetText();
+        if (identifiers.Count == 0) {
+          // Nothing special in this sign.
+          return signText;
+        }
+
+        var countWild = new Dictionary<string, int>();
+        var countTame = new Dictionary<string, int>();
+        var countAll = new Dictionary<string, int>();
+
+        foreach (var identifier in identifiers) {
+          countAll[identifier] = 0;
+          countWild[identifier] = 0;
+          countTame[identifier] = 0;
+        }
+
+        foreach (var character in Character.GetAllCharacters()) {
+          var baseName = character.m_name.Replace("$enemy_", "");
+          if (identifiers.Contains(baseName) && IsInsideFarm(character)) {
+            if (character.IsTamed()) {
+              countTame[baseName] += 1;
+            } else {
+              countWild[baseName] += 1;
+            }
+            countAll[baseName] += 1;
+          }
+        }
+
+        foreach (var key in identifiers) {
+          signText = signText.Replace($"$wild_{key}", countWild[key].ToString());
+          signText = signText.Replace($"$tame_{key}", countTame[key].ToString());
+          signText = signText.Replace($"$all_{key}", countAll[key].ToString());
+        }
+
+        // For debugging purposes, show the number of workbenches in range.
+        signText = signText.Replace(
+            "$all_workbench", workbenches.Count.ToString());
+
         return signText;
       }
 
-      var workbenches = FindWorkbenches(sign.transform.position);
+      [HarmonyPatch]
+      class Patches {
+        [HarmonyPatch(typeof(CraftingStation), nameof(CraftingStation.Start))]
+        [HarmonyPostfix]
+        static void SniffWorkbenchRange(CraftingStation __instance) {
+          if (__instance.m_name == workbenchName) {
+            // If there's a mod installed that modifies the workbench range,
+            // sniff out the range at runtime.  This is compatible with Valheim
+            // Plus.
+            if (workbenchRange != __instance.m_rangeBuild) {
+              workbenchRange = __instance.m_rangeBuild;
+              Logger.LogInfo($"Workbench range detected: {workbenchRange}");
+            }
 
-      var countWild = new Dictionary<string, int>();
-      var countTamed = new Dictionary<string, int>();
-      var countAll = new Dictionary<string, int>();
-
-      foreach (var character in Character.GetAllCharacters()) {
-        var baseName = character.m_name.Replace("$enemy_", "");
-        if (!countTamed.ContainsKey(baseName)) {
-          countWild[baseName] = 0;
-          countTamed[baseName] = 0;
-          countAll[baseName] = 0;
-        }
-
-        if (IsInsideFarm(character, workbenches)) {
-          countAll[baseName] += 1;
-          if (character.IsTamed()) {
-            countTamed[baseName] += 1;
-          } else {
-            countWild[baseName] += 1;
+            // If a new workbench is created, or a workbench is started after a
+            // Sign, we need to have all Signs recompute their list of
+            // workbenches.
+            RecomputeAllWorkbenchesInRange();
           }
         }
-      }
 
-      // Sort the keys, longest first, since some monster names are substrings
-      // of others.  By replacing the longest keys first, we make sure we do
-      // the right thing with $num_boar and $num_boarpiggy.
-      var keys = new List<string>(countTamed.Keys);
-      keys.Sort((x, y) => y.Length.CompareTo(x.Length));
-
-      foreach (var key in keys) {
-        signText = signText.Replace($"$wild_{key}", countWild[key].ToString());
-        signText = signText.Replace($"$tame_{key}", countTamed[key].ToString());
-        signText = signText.Replace($"$all_{key}", countAll[key].ToString());
-      }
-      signText = signText.Replace("$workbenches", workbenches.Count.ToString());
-      return signText;
-    }
-
-    // Does not change the actual text stored, only the text displayed.
-    // The original, unaltered text will show up for the editor.
-    [HarmonyPatch(typeof(Sign), nameof(Sign.UpdateText))]
-    class ReplaceDisplayedSignText_Patch {
-      static IEnumerable<CodeInstruction> Transpiler(
-          IEnumerable<CodeInstruction> instructions,
-          ILGenerator generator) {
-        var replacementTextMethod = typeof(FarmCounterMod).GetMethod(
-            nameof(FarmCounterMod.ComputeDisplayedSignText),
-            BindingFlags.Static | BindingFlags.NonPublic);
-
-        foreach (var code in instructions) {
-          if (code.opcode == OpCodes.Call &&
-              (code.operand as MethodInfo).Name == "GetText") {
-            yield return new CodeInstruction(
-                OpCodes.Call, replacementTextMethod);
-          } else {
-            yield return code;
+        // Attach the new behaviour to all Signs.
+        [HarmonyPatch(typeof(Sign), nameof(Sign.Awake))]
+        [HarmonyPostfix]
+        static void AttachNewSignBehaviour(Sign __instance) {
+          if (__instance.GetComponent<FarmCounterBehaviour>() == null) {
+            __instance.gameObject.AddComponent<FarmCounterBehaviour>();
           }
         }
-      }
-    }
-  }
-}
+
+        // If a player changes a Sign's text, reparse it for special identifiers.
+        [HarmonyPatch(typeof(Sign), nameof(Sign.SetText))]
+        [HarmonyPostfix]
+        static void ParseNewSignText(Sign __instance) {
+          var farmCounter = __instance.GetComponent<FarmCounterBehaviour>();
+          if (farmCounter != null) {
+            farmCounter.PreparseSignText();
+          }
+        }
+
+        // Does not change the actual text stored, only the text displayed.
+        // The original, unaltered text will show up for the editor.
+        [HarmonyPatch(typeof(Sign), nameof(Sign.UpdateText))]
+        [HarmonyTranspiler]
+        static IEnumerable<CodeInstruction> ReplaceDisplayedText(
+            IEnumerable<CodeInstruction> instructions,
+            ILGenerator generator) {
+          var replacementTextMethod = typeof(FarmCounterBehaviour).GetMethod(
+              nameof(FarmCounterBehaviour.ComputeDisplayedText),
+              BindingFlags.Static | BindingFlags.Public);
+
+          foreach (var code in instructions) {
+            // Call our ComputeDisplayedText method instead of GetText.
+            if (code.opcode == OpCodes.Call &&
+                (code.operand as MethodInfo).Name == "GetText") {
+              yield return new CodeInstruction(
+                  OpCodes.Call, replacementTextMethod);
+            } else {
+              yield return code;
+            }
+          }
+        }
+      }  // class Patches
+    }  // class FarmCounterBehaviour
+  }  // class FarmCounterMod
+}  // namespace FarmCounter
