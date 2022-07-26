@@ -40,7 +40,7 @@ namespace FarmCounter {
   [BepInPlugin(PluginGUID, PluginName, PluginVersion)]
   public class FarmCounterMod : BaseUnityPlugin {
     // BepInEx' plugin metadata
-    public const string PluginGUID = "io.github.joeyparrish";
+    public const string PluginGUID = "io.github.joeyparrish.FarmCounter";
     public const string PluginName = "FarmCounter";
     public const string PluginVersion = ModVersion.String;
 
