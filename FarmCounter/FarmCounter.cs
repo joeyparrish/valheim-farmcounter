@@ -257,15 +257,47 @@ namespace FarmCounter {
           var replacementTextMethod = typeof(FarmCounterBehaviour).GetMethod(
               nameof(FarmCounterBehaviour.ComputeDisplayedText),
               BindingFlags.Static | BindingFlags.Public);
+          var firstGetStringFound = false;
+
+          /*
+          The beginning of the original method, as of Jan 2023, looks like:
+
+          IL_0000: newobj instance void Sign/'<>c__DisplayClass4_0'::.ctor()
+          IL_0005: stloc.0
+          IL_0006: ldloc.0
+
+          IL_0007: ldarg.0
+          IL_0008: stfld class Sign Sign/'<>c__DisplayClass4_0'::'<>4__this'
+          IL_000d: ldloc.0
+
+          IL_000e: ldarg.0
+          IL_000f: ldfld class ZNetView Sign::m_nview
+          IL_0014: callvirt instance class ZDO ZNetView::GetZDO()
+          IL_0019: ldstr "text"
+          IL_001e: ldarg.0
+          IL_001f: ldfld string Sign::m_defaultText
+          IL_0024: callvirt instance string ZDO::GetString(string, string)
+
+          IL_0029: stfld string Sign/'<>c__DisplayClass4_0'::text
+
+          This corresponds to this in C#:
+
+          string text = m_nview.GetZDO().GetString("text", m_defaultText);
+          */
 
           foreach (var code in instructions) {
-            // Call our ComputeDisplayedText method instead of GetText.
-            if (code.opcode == OpCodes.Call &&
-                (code.operand as MethodInfo).Name == "GetText") {
+            yield return code;
+
+            // After the first call to GetString, trash the result and call our
+            // ComputeDisplayedText method to replace it.
+            if (!firstGetStringFound &&
+                code.opcode == OpCodes.Call &&
+                (code.operand as MethodInfo).Name == "GetString") {
+              firstGetStringFound = true;
+              yield return new CodeInstruction(OpCodes.Pop);
+              yield return new CodeInstruction(OpCodes.Ldarg_0);
               yield return new CodeInstruction(
                   OpCodes.Call, replacementTextMethod);
-            } else {
-              yield return code;
             }
           }
         }
