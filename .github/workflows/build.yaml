@@ -27,8 +27,11 @@ jobs:
       - name: Install NuGet dependencies
         run: |
           # Fixes weird permission errors that started in GitHub Actions
-          # environments on June 14th:
+          # environments on June 14th 2022:
           sudo chown -R $USER /tmp/NuGetScratch/
+          # Fixes weird permission errors that started in GitHub Actions
+          # environments on January 24th 2023:
+          sudo chown -R $USER ~/.config/NuGet/
 
           nuget restore FarmCounter.sln
 
