@@ -156,7 +156,7 @@ namespace FarmCounter {
         return false;
       }
 
-      // Called by a transpiler patch instead of sign.GetText().
+      // Called by a transpiler patch to replace the raw text in UpdateText().
       public static string ComputeDisplayedText(Sign sign) {
         var farmCounter = sign.GetComponent<FarmCounterBehaviour>();
         if (farmCounter != null) {
@@ -245,6 +245,21 @@ namespace FarmCounter {
           if (farmCounter != null) {
             farmCounter.PreparseSignText();
           }
+        }
+
+        // At least since January 2023, Sign.GetText() returns a value cached
+        // by UpdateText().  This broke a core assumption that GetText()
+        // returns the raw data and not the displayed data.  To fix this, we
+        // patch over GetText() and give it the original implementation.  This
+        // not only fixes much of the logic above, but ensures that the editor
+        // always shows the raw text when you go to modify a sign.
+        [HarmonyPatch(typeof(Sign), nameof(Sign.GetText))]
+        [HarmonyPrefix]
+        static bool GetRawText(Sign __instance, ref string __result) {
+          __result = __instance.m_nview.GetZDO().GetString(
+              "text", __instance.m_defaultText);
+          // Suppress the built-in version in favor of this patch.
+          return false;
         }
 
         // Does not change the actual text stored, only the text displayed.
