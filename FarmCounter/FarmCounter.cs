@@ -98,12 +98,33 @@ namespace FarmCounter {
         }
       }
 
+      private bool IsSimpleIdentifierCharacter(char ch) {
+        return (ch >= 'a' && ch <= 'z') ||
+               (ch >= 'A' && ch <= 'Z') ||
+               (ch >= '0' && ch <= '9') ||
+               (ch == '_');
+      }
+
+      private void ConsumeIdentifier(HashSet<string> identifierSet,
+                                     string identifier) {
+        Logger.LogDebug($"PreparseSignText: identifier \"{identifier}\"");
+        if (identifier.StartsWith("all_")) {
+          identifierSet.Add(identifier.Replace("all_", ""));
+        } else if (identifier.StartsWith("tame_")) {
+          identifierSet.Add(identifier.Replace("tame_", ""));
+        } else if (identifier.StartsWith("wild_")) {
+          identifierSet.Add(identifier.Replace("wild_", ""));
+        }
+      }
+
       public void PreparseSignText() {
         var signText = sign.GetText();
         var identifierSet = new HashSet<string>();
         Logger.LogDebug($"PreparseSignText: \"{signText}\"");
 
         bool in_identifier = false;
+        bool in_simple_identifier = false;
+        bool in_extended_identifier = false;
         string identifier = "";
 
         // Iterate to the character past the end, on purpose.  This will allow
@@ -115,24 +136,31 @@ namespace FarmCounter {
           if (in_identifier == false) {
             if (ch == '$') {
               in_identifier = true;
+              in_simple_identifier = false;
+              in_extended_identifier = false;
               identifier = "";
             }
-          } else {
-            if ((ch >= 'a' && ch <= 'z') ||
-                (ch >= 'A' && ch <= 'Z') ||
-                (ch >= '0' && ch <= '9') ||
-                (ch == '_')) {
+          } else if (in_simple_identifier) {
+            if (IsSimpleIdentifierCharacter(ch)) {
               identifier += ch;
             } else {
-              Logger.LogDebug($"PreparseSignText: identifier \"{identifier}\"");
-              if (identifier.StartsWith("all_")) {
-                identifierSet.Add(identifier.Replace("all_", ""));
-              } else if (identifier.StartsWith("tame_")) {
-                identifierSet.Add(identifier.Replace("tame_", ""));
-              } else if (identifier.StartsWith("wild_")) {
-                identifierSet.Add(identifier.Replace("wild_", ""));
-              }
+              ConsumeIdentifier(identifierSet, identifier);
               in_identifier = false;
+            }
+          } else if (in_extended_identifier) {
+            if (ch == '}') {
+              ConsumeIdentifier(identifierSet, identifier);
+              in_identifier = false;
+            } else {
+              identifier += ch;
+            }
+          } else {
+            // We don't know what kind of identifier this is yet.
+            if (ch == '{') {
+              in_extended_identifier = true;
+            } else if (IsSimpleIdentifierCharacter(ch)) {
+              in_simple_identifier = true;
+              identifier += ch;
             }
           }
         }
@@ -183,21 +211,33 @@ namespace FarmCounter {
         }
 
         foreach (var character in Character.GetAllCharacters()) {
+          var rawName = character.m_name;
           var baseName = character.m_name.Replace("$enemy_", "");
-          if (identifiers.Contains(baseName) && IsInsideFarm(character)) {
+          string nameUsed = null;
+
+          if (identifiers.Contains(baseName)) {
+            nameUsed = baseName;
+          } else if (identifiers.Contains(rawName)) {
+            nameUsed = rawName;
+          }
+
+          if (nameUsed != null && IsInsideFarm(character)) {
             if (character.IsTamed()) {
-              countTame[baseName] += 1;
+              countTame[nameUsed] += 1;
             } else {
-              countWild[baseName] += 1;
+              countWild[nameUsed] += 1;
             }
-            countAll[baseName] += 1;
+            countAll[nameUsed] += 1;
           }
         }
 
         foreach (var key in identifiers) {
           signText = signText.Replace($"$wild_{key}", countWild[key].ToString());
+          signText = signText.Replace($"${{wild_{key}}}", countWild[key].ToString());
           signText = signText.Replace($"$tame_{key}", countTame[key].ToString());
+          signText = signText.Replace($"${{tame_{key}}}", countTame[key].ToString());
           signText = signText.Replace($"$all_{key}", countAll[key].ToString());
+          signText = signText.Replace($"${{all_{key}}}", countAll[key].ToString());
         }
 
         // For debugging purposes, show the number of workbenches in range.

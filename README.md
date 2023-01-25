@@ -53,6 +53,25 @@ a mod like [AllTameable](https://www.nexusmods.com/valheim/mods/478) or
 could be considered tame.
 
 
+## Extended tag syntax for modded creatures
+
+Modded creatures that don't follow the normal `$enemy_` pattern in `m_name` can
+still be counted.  There is an extended syntax that you can use for
+names that contain spaces or don't follow normal patterns.
+
+Extended tags take the form of `${tame_...}`, `${wild_...}`, or `${all_...}`,
+where the `...` part is the exact `m_name` for the modded creature.  It can contain any character but `}`.
+
+For example, when using the
+[OdinHorse](https://valheim.thunderstore.io/package/OdinPlus/OdinHorse/) mod,
+there is a creature with `m_name` set to `$odin_horse`.  To count tame horses,
+use the tag `${tame_$odin_horse}`.
+
+For another example, [AllTameable](https://www.nexusmods.com/valheim/mods/478)
+creates baby deer with `m_name` set to `Mini $enemy_deer`.  To count tame baby
+deer, use the tag `${tame_Mini $enemy_deer}`.
+
+
 ## Defining "nearby"
 
 Valheim defines your "base" as anything in range of your workbenches, so this
@@ -64,6 +83,9 @@ your sign.
 In vanilla Valheim, workbenches have a 20 meter range.  If you're using a mod
 such as [Valheim Plus](https://github.com/valheimPlus/ValheimPlus), FarmCounter
 will detect the overridden distance from the other mod and use that instead.
+
+To determine the number of nearby workbenches, you can use the special
+debugging tag `$all_workbench`.
 
 
 ## Dependencies
