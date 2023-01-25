@@ -291,7 +291,7 @@ namespace FarmCounter {
             // After the first call to GetString, trash the result and call our
             // ComputeDisplayedText method to replace it.
             if (!firstGetStringFound &&
-                code.opcode == OpCodes.Call &&
+                code.opcode == OpCodes.Callvirt &&
                 (code.operand as MethodInfo).Name == "GetString") {
               firstGetStringFound = true;
               yield return new CodeInstruction(OpCodes.Pop);
@@ -299,6 +299,12 @@ namespace FarmCounter {
               yield return new CodeInstruction(
                   OpCodes.Call, replacementTextMethod);
             }
+          }
+
+          if (!firstGetStringFound) {
+            Logger.LogError($"Failed to patch Sign.UpdateText!");
+          } else {
+            Logger.LogInfo($"Successfully patched Sign.UpdateText!");
           }
         }
       }  // class Patches
