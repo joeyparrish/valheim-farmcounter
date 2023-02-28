@@ -60,12 +60,14 @@ still be counted.  There is an extended syntax that you can use for
 names that contain spaces or don't follow normal patterns.
 
 Extended tags take the form of `${tame_...}`, `${wild_...}`, or `${all_...}`,
-where the `...` part is the exact `m_name` for the modded creature.  It can contain any character but `}`.
+where the `...` part is the exact `m_name` for the modded creature.  It can
+contain any character but `}`.
 
 For example, when using the
 [OdinHorse](https://valheim.thunderstore.io/package/OdinPlus/OdinHorse/) mod,
-there is a creature with `m_name` set to `$odin_horse`.  To count tame horses,
-use the tag `${tame_$odin_horse}`.
+there is a creature with `m_name` set to `$horse_odin`.  To count tame horses,
+use the tag `${tame_$horse_odin}`.  Foals can be counted with
+`${all_$horse_offspring}`.
 
 For another example, [AllTameable](https://www.nexusmods.com/valheim/mods/478)
 creates baby deer with `m_name` set to `Mini $enemy_deer`.  To count tame baby
