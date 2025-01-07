@@ -10,10 +10,10 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -21,14 +21,15 @@ jobs:
         id: valheimversion
         run: echo "valheimversion=$(curl -s https://api.steamcmd.net/v1/info/896660 | jq -r ".data.\"896660\".depots.branches.public.buildid")" >> $GITHUB_OUTPUT
 
+      - name: Get BepInEx version
+        id: bepinexversion
+        run: echo "bepinexversion=$(./scripts/get-dep-version.sh denikson-BepInExPack_Valheim)" >> $GITHUB_OUTPUT
+
       - name: Get build commands
         run: scripts/install-linux-tools.sh
 
       - name: Install NuGet dependencies
         run: |
-          # Fixes weird permission errors that started in GitHub Actions
-          # environments on June 14th 2022:
-          sudo chown -R $USER /tmp/NuGetScratch/
           # Fixes weird permission errors that started in GitHub Actions
           # environments on January 24th 2023:
           sudo chown -R $USER ~/.config/NuGet/
@@ -37,7 +38,7 @@ jobs:
 
       - name: Cache Valheim
         id: cachevalheim
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: ~/VHINSTALL
           key: ${{ steps.valheimversion.outputs.valheimversion }}-${{ hashFiles('**/lockfiles') }}-BepInExPack-5.4.1900
@@ -49,7 +50,7 @@ jobs:
       - name: Prepare FarmCounter dependencies
         if: steps.cachevalheim.outputs.cache-hit != 'true'
         run: |
-          wget -O bepinex.zip "https://valheim.thunderstore.io/package/download/denikson/BepInExPack_Valheim/5.4.1900/"
+          wget -O bepinex.zip "https://thunderstore.io/package/download/denikson/BepInExPack_Valheim/${{ steps.bepinexversion.outputs.bepinexversion }}/"
           unzip bepinex.zip -d ~/BepInExRaw
           steamcmd +login anonymous +force_install_dir ~/VHINSTALL +app_update 896660 validate +exit
           mv ~/VHINSTALL/valheim_server_Data/ ~/VHINSTALL/valheim_Data/
@@ -81,7 +82,7 @@ jobs:
         run: |
           RELEASE_VERSION="${RELEASE_VERSION:-0.0.1}" ./scripts/package.sh
 
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v4
         with:
           # Will result in FarmCounter.zip
           name: FarmCounter
@@ -89,7 +90,7 @@ jobs:
           path: staging/
 
       - name: Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: FarmCounter.zip
